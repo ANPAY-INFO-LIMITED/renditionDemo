@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules import Config, TaskManager, TaskStatus, AIInterface
 from modules.data_models import SourceVideo
+from modules.ai_interface import parse_ai_json_response, parse_duration, ScenePrompt, CharacterInShot
+import uuid
 
 
 def format_duration(seconds: float) -> str:
@@ -173,6 +175,15 @@ def render_video_upload_page():
             disabled=btn_disabled
         )
 
+    with col_btn2:
+        test_btn_disabled = analysis_complete
+        test_clicked = st.button(
+            "🧪 测试数据",
+            use_container_width=True,
+            disabled=test_btn_disabled,
+            help="使用测试数据模拟AI分析"
+        )
+
     # Only show analyze button area if not yet analyzed
     if not analysis_complete:
         # Analyze button logic
@@ -185,18 +196,17 @@ def render_video_upload_page():
             status_text = st.empty()
 
             try:
-                status_text.markdown("🔄 正在分析视频..")
-                progress_bar.progress(20)
+                status_text.markdown("🔄 正在上传视频到AI服务...")
+                progress_bar.progress(10)
                 time.sleep(0.5)
 
-
-                # Call AI interface (placeholder)
+                # Call AI interface
                 result = AIInterface.analyze_video(
                     current_task.source_video.path,
                     current_task.task_id
                 )
 
-                progress_bar.progress(100)
+                progress_bar.progress(80)
 
                 if result.success:
                     # Update task with results
@@ -204,120 +214,101 @@ def render_video_upload_page():
                         current_task.character_keyframes = result.character_keyframes
                     if result.scene_prompts:
                         current_task.scene_prompts = result.scene_prompts
+                    # Store AI analysis results
+                    current_task.ai_analysis_result = result.raw_result
+                    current_task.ai_style = result.ai_style
+                    current_task.ai_scene = result.ai_scene
 
                     current_task.update_status(TaskStatus.ANALYSIS_COMPLETE)
                     TaskManager.save_task(current_task)
 
-                    status_text.success("✅ 分析完成!")
+                    progress_bar.progress(100)
+                    status_text.success(f"✅ {result.message}")
                     st.rerun()
                 else:
                     current_task.error_message = result.error
                     current_task.update_status(TaskStatus.ERROR)
                     TaskManager.save_task(current_task)
+                    progress_bar.progress(0)
                     status_text.error(f"❌ 分析失败: {result.error}")
 
             except Exception as e:
                 current_task.error_message = str(e)
                 current_task.update_status(TaskStatus.ERROR)
                 TaskManager.save_task(current_task)
+                progress_bar.progress(0)
                 status_text.error(f"❌ 发生错误: {str(e)}")
 
-        with col_btn2:
-            # Add demo data for testing
-            if st.button("📋 添加测试数据", use_container_width=True, help="添加演示数据以便测试"):
-                from modules.data_models import CharacterKeyframe, ScenePrompt
-                import uuid
+        # Test data button logic
+        if test_clicked:
+            try:
+                # Read test data file
+                test_file_path = Path(__file__).parent.parent / "modules" / "test_ai_response.txt"
+                with open(test_file_path, 'r', encoding='utf-8') as f:
+                    test_result = f.read()
 
-                # Create demo keyframes
-                current_task.character_keyframes = [
-                    CharacterKeyframe(
-                        id=str(uuid.uuid4()),
-                        frame_index=1,
-                        timestamp=2.5,
-                        image_path="",
-                        prompt="A young woman with long black hair wearing a red dress, standing in a sunlit room",
-                        character_description="Young woman, late 20s, long black hair, red elegant dress",
-                        confidence=0.92
-                    ),
-                    CharacterKeyframe(
-                        id=str(uuid.uuid4()),
-                        frame_index=2,
-                        timestamp=8.3,
-                        image_path="",
-                        prompt="An elderly man with gray beard wearing casual shirt, sitting on a wooden chair",
-                        character_description="Elderly man, 60s, gray beard, blue casual shirt",
-                        confidence=0.88
-                    ),
-                    CharacterKeyframe(
-                        id=str(uuid.uuid4()),
-                        frame_index=3,
-                        timestamp=15.7,
-                        image_path="",
-                        prompt="A child with blonde curly hair wearing a yellow t-shirt, playing with a ball",
-                        character_description="Child, 5-6 years old, blonde curly hair, yellow t-shirt",
-                        confidence=0.85
-                    ),
-                ]
+                # Parse the test data
+                characters, style, scene, parsed_data = parse_ai_json_response(test_result)
 
-                # Create demo scene prompts
-                current_task.scene_prompts = [
-                    ScenePrompt(
-                        id=str(uuid.uuid4()),
-                        start_time=0.0,
-                        end_time=5.0,
-                        prompt="Interior living room with large windows, warm afternoon sunlight streaming in, cozy furniture arrangement with vintage wooden coffee table",
-                        scene_type="interior",
-                        camera_movement="slow pan",
-                        lighting="natural warm"
-                    ),
-                    ScenePrompt(
-                        id=str(uuid.uuid4()),
-                        start_time=5.0,
-                        end_time=12.0,
-                        prompt="Close-up shot of two characters having an emotional conversation, soft bokeh background, intimate atmosphere",
-                        scene_type="close-up",
-                        camera_movement="static",
-                        lighting="studio soft"
-                    ),
-                    ScenePrompt(
-                        id=str(uuid.uuid4()),
-                        start_time=12.0,
-                        end_time=20.0,
-                        prompt="Wide establishing shot of a garden with colorful flowers, butterflies flying, peaceful morning atmosphere",
-                        scene_type="establishing",
-                        camera_movement="dolly forward",
-                        lighting="golden hour"
-                    ),
-                    ScenePrompt(
-                        id=str(uuid.uuid4()),
-                        start_time=20.0,
-                        end_time=30.0,
-                        prompt="Medium shot of characters walking through a forest path, dappled sunlight through trees, magical atmosphere",
-                        scene_type="action",
-                        camera_movement="tracking",
-                        lighting="natural filtered"
-                    ),
-                ]
+                # Parse scene_prompts
+                scene_prompts = []
+                shots_data = parsed_data.get('shots', [])
+                cumulative_time = 0.0
 
+                for idx, shot_data in enumerate(shots_data):
+                    duration = parse_duration(shot_data.get('time', '0'))
+                    
+                    # Parse characters in shot
+                    chars_in_shot = []
+                    for char_data in shot_data.get('characters_in_shot', []):
+                        chars_in_shot.append(CharacterInShot(
+                            name=char_data.get('name', ''),
+                            pose=char_data.get('pose', ''),
+                            position=char_data.get('position', '')
+                        ))
+                    
+                    prompt_parts = []
+                    if shot_data.get('opening_frame'):
+                        prompt_parts.append(f"开场: {shot_data['opening_frame']}")
+                    if shot_data.get('continuous_action'):
+                        prompt_parts.append(f"动作: {shot_data['continuous_action']}")
+                    if shot_data.get('end_state'):
+                        prompt_parts.append(f"结尾: {shot_data['end_state']}")
+                    if shot_data.get('camera'):
+                        prompt_parts.append(f"镜头: {shot_data['camera']}")
+
+                    scene_prompt = ScenePrompt(
+                        id=str(uuid.uuid4()),
+                        start_time=cumulative_time,
+                        end_time=cumulative_time + duration,
+                        continuous_action=shot_data.get('continuous_action', ''),
+                        space=shot_data.get('space', ''),
+                        time_atmosphere=shot_data.get('time_atmosphere', ''),
+                        camera=shot_data.get('camera', ''),
+                        characters_in_shot=chars_in_shot,
+                        transition=shot_data.get('transition', ''),
+                        opening_frame=shot_data.get('opening_frame', ''),
+                        end_state=shot_data.get('end_state', ''),
+                        prompt="; ".join(prompt_parts) if prompt_parts else shot_data.get('opening_frame', ''),
+                        scene_type=shot_data.get('camera', '')
+                    )
+                    scene_prompts.append(scene_prompt)
+                    cumulative_time += duration
+
+                # Update task
+                current_task.character_keyframes = characters
+                current_task.scene_prompts = scene_prompts
+                current_task.ai_analysis_result = test_result
+                current_task.ai_style = style
+                current_task.ai_scene = scene
                 current_task.update_status(TaskStatus.ANALYSIS_COMPLETE)
                 TaskManager.save_task(current_task)
-                st.success("✅ 测试数据已添加!")
+
+                st.success(f"✅ 测试数据加载完成：{len(characters)}个角色，{len(scene_prompts)}个镜头")
                 st.rerun()
 
-        with col_btn3:
-            if current_task.character_keyframes:
-                st.success(f"✅ 已提取 {len(current_task.character_keyframes)} 个人物关键帧")
-            else:
-                st.info("尚未提取人物关键帧")
-    else:
-        # Show completion status
-        st.success("✅ 视频分析已完成，可前往后续页面继续操作")
-        with st.expander("📊 分析结果摘要"):
-            if current_task.character_keyframes:
-                st.markdown(f"**👤 人物关键帧:** {len(current_task.character_keyframes)} 个")
-            if current_task.scene_prompts:
-                st.markdown(f"**🎬 场景镜头:** {len(current_task.scene_prompts)} 个")
-
+            except Exception as e:
+                st.error(f"❌ 测试数据加载失败: {str(e)}")
 
 # Run page
 if __name__ == "__main__":

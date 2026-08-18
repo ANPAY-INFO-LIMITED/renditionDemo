@@ -133,13 +133,13 @@ def upload_pdf(pdf_path: str) -> str:
     return jsonfile.id
 
 
-def upload_video(video_path: str, fps: float = 0.3) -> str:
+def upload_video(video_path: str, fps: float = 1) -> str:
     """
     上传视频文件到ARK服务
 
     Args:
         video_path: 视频文件路径
-        fps: 视频采样帧率，默认0.3
+        fps: 视频采样帧率，默认1
 
     Returns:
         上传后的文件ID
@@ -192,8 +192,10 @@ def generate_prompt_from_video(video_file_id: str, json_file_id: str, prompt_tex
             ]},
         ],
     )
-    return response.output
+    print(response.usage)
 
+
+    return response.output[0].content[0].text
 
 async def process_video_prompt(video_path: str = None, txt_path: str = None, prompt_text: str = None):
     """

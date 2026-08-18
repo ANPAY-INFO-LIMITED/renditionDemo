@@ -6,10 +6,10 @@ from .data_models import (
     CharacterKeyframe,
     ScenePrompt,
     GeneratedVideo,
-    TaskStatus
+    TaskStatus,
 )
 from .task_manager import TaskManager
-from .ai_interface import AIInterface
+from .ai_interface import AIInterface, AnalysisResult, GenerationResult
 from .config import Config
 
 __all__ = [
@@ -21,5 +21,7 @@ __all__ = [
     'TaskStatus',
     'TaskManager',
     'AIInterface',
-    'Config'
+    'AnalysisResult',
+    'GenerationResult',
+    'Config',
 ]

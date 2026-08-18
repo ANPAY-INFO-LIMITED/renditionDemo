@@ -7,14 +7,14 @@
             "description": "角色描述",
             "facial_features": "角色面部特征"
             "costume"："角色服饰"，
-            "best_frame": "最佳角色展示帧的位置，精确至毫秒"
+            "best_frame": "最佳角色展示帧的位置，示例1:02"
         }
     ],
     "scene": "场景名称",
     "shots": [
         {
             "id":"镜头id，从0开始递增",
-            "time": "镜头时间长度",
+            "time": "镜头时间长度,示例：3.5s",
             "space": "空间/场景",
             "time_atmosphere": "时间氛围/光影",
             "camera": "镜头类型",
@@ -27,15 +27,8 @@
             ],
             "transition": "本镜开头承接动作",
             "opening_frame": "开场画面描述",
-            "continuous_action": "连续表演描述",
+            "continuous_action": "连续表演描述及人物对话",
             "end_state": "镜尾状态描述",
-            "dialogue": [
-                {
-                    "character": "说话角色",
-                    "language": "语言类型",
-                    "line": "台词内容"
-                }
-            ]
         }
     ]
 }

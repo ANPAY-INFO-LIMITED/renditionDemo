@@ -1,6 +1,7 @@
 """Data models for RenditionDemo tasks"""
 
 import uuid
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -42,11 +43,16 @@ class SourceVideo:
 class CharacterKeyframe:
     """Character keyframe with extracted prompt"""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    character_id: int = 0  # AI返回的角色ID
+    name: str = ""  # 角色名称
     frame_index: int = 0
     timestamp: float = 0.0
     image_path: str = ""
     prompt: str = ""
     character_description: str = ""
+    facial_features: str = ""  # 面部特征
+    costume: str = ""  # 服饰
+    best_frame: str = ""  # 最佳展示帧位置
     confidence: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -54,29 +60,86 @@ class CharacterKeyframe:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CharacterKeyframe':
+        if not data or not isinstance(data, dict):
+            return cls()
         if 'id' not in data:
             data['id'] = str(uuid.uuid4())
-        return cls(**data)
+        # Ensure all expected fields exist
+        safe_data = {
+            'id': data.get('id', str(uuid.uuid4())),
+            'character_id': data.get('id', 0),  # AI返回的id作为character_id
+            'name': data.get('name', ''),
+            'frame_index': data.get('frame_index', 0),
+            'timestamp': data.get('timestamp', 0.0),
+            'image_path': data.get('image_path', ''),
+            'prompt': data.get('prompt', data.get('description', '')),
+            'character_description': data.get('character_description', data.get('description', '')),
+            'facial_features': data.get('facial_features', ''),
+            'costume': data.get('costume', ''),
+            'best_frame': data.get('best_frame', ''),
+            'confidence': data.get('confidence', 0.0)
+        }
+        return cls(**safe_data)
 
 
 @dataclass
-class ScenePrompt:
-    """Scene/shot prompt"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    start_time: float = 0.0
-    end_time: float = 0.0
-    prompt: str = ""
-    scene_type: str = ""
-    camera_movement: str = ""
-    lighting: str = ""
+class CharacterInShot:
+    """Character appearing in a shot"""
+    name: str = ""
+    pose: str = ""
+    position: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CharacterInShot':
+        return cls(**data)
+
+
+@dataclass
+class ScenePrompt:
+    """Scene/shot prompt - matches json_example.txt shots structure"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    start_time: float = 0.0
+    end_time: float = 0.0
+    # Basic info
+    continuous_action: str = ""  # 连续表演描述及人物对话
+    # Shot details
+    space: str = ""  # 空间/场景
+    time_atmosphere: str = ""  # 时间氛围/光影 (原 lighting)
+    camera: str = ""  # 镜头类型 (原 camera_movement)
+    characters_in_shot: List[CharacterInShot] = field(default_factory=list)
+    transition: str = ""  # 本镜开头承接动作
+    opening_frame: str = ""  # 开场画面描述
+    end_state: str = ""  # 镜尾状态描述
+
+    # Legacy fields for compatibility
+    prompt: str = ""  # 保留作为 combined prompt
+    scene_type: str = ""  # 兼容旧代码
+
+    def to_dict(self) -> Dict[str, Any]:
+        result = asdict(self)
+        # Backward compatibility: include legacy field names
+        result['lighting'] = self.time_atmosphere
+        result['camera_movement'] = self.camera
+        return result
+
+    @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ScenePrompt':
         if 'id' not in data:
             data['id'] = str(uuid.uuid4())
+        # Convert characters_in_shot dicts to CharacterInShot objects
+        if 'characters_in_shot' in data and isinstance(data['characters_in_shot'], list):
+            data['characters_in_shot'] = [
+                CharacterInShot.from_dict(c) if isinstance(c, dict) else c 
+                for c in data['characters_in_shot']
+            ]
+        # Backward compatibility: map old field names to new ones
+        if 'lighting' in data and 'time_atmosphere' not in data:
+            data['time_atmosphere'] = data['lighting']
+        if 'camera_movement' in data and 'camera' not in data:
+            data['camera'] = data['camera_movement']
         return cls(**data)
 
 
@@ -111,6 +174,12 @@ class Task:
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # AI分析结果原始数据
+    ai_analysis_result: Optional[str] = None  # AI返回的原始JSON
+    ai_style: str = ""  # 画面风格
+    ai_scene: str = ""  # 场景名称
+    shot_segments: List[Dict[str, Any]] = field(default_factory=list)  # 拆分后的镜头片段
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert task to dictionary"""
         data = {
@@ -130,6 +199,15 @@ class Task:
 
         if self.generated_video:
             data['generated_video'] = self.generated_video.to_dict()
+
+        # AI分析结果
+        if self.ai_analysis_result:
+            data['ai_analysis_result'] = self.ai_analysis_result
+        if self.ai_style:
+            data['ai_style'] = self.ai_style
+        if self.ai_scene:
+            data['ai_scene'] = self.ai_scene
+        data['shot_segments'] = self.shot_segments
 
         return data
 
@@ -157,6 +235,12 @@ class Task:
 
         if 'generated_video' in data and data['generated_video']:
             task.generated_video = GeneratedVideo.from_dict(data['generated_video'])
+
+        # AI分析结果
+        task.ai_analysis_result = data.get('ai_analysis_result')
+        task.ai_style = data.get('ai_style', '')
+        task.ai_scene = data.get('ai_scene', '')
+        task.shot_segments = data.get('shot_segments', [])
 
         return task
 

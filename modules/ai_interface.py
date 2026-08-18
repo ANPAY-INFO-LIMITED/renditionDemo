@@ -1,5 +1,8 @@
-"""AI interface placeholder for video processing APIs"""
+"""AI interface for video processing APIs"""
 
+import asyncio
+import json
+import re
 import uuid
 import time
 from pathlib import Path
@@ -10,9 +13,10 @@ from .data_models import (
     Task,
     CharacterKeyframe,
     ScenePrompt,
+    CharacterInShot,
     SourceVideo,
     GeneratedVideo,
-    TaskStatus
+    TaskStatus,
 )
 from .config import Config
 
@@ -24,6 +28,9 @@ class AnalysisResult:
     message: str
     character_keyframes: List[CharacterKeyframe] = None
     scene_prompts: List[ScenePrompt] = None
+    ai_style: str = ""
+    ai_scene: str = ""
+    raw_result: str = ""
     error: Optional[str] = None
 
 
@@ -36,44 +43,296 @@ class GenerationResult:
     error: Optional[str] = None
 
 
+def parse_duration(duration_str: str) -> float:
+    """Parse duration string like '3s' to float seconds"""
+    if not duration_str:
+        return 0.0
+    match = re.search(r'(\d+(?:\.\d+)?)', str(duration_str))
+    if match:
+        return float(match.group(1))
+    return 0.0
+
+
+def fix_json_quotes(json_str: str) -> str:
+    """Fix Chinese quotes and other common JSON issues"""
+    # Replace Chinese quotes with English quotes
+    replacements = [
+        ('"', '"'), ('"', '"'),  # Left/right double quotes
+        ("'", "'"), ("'", "'"),  # Left/right single quotes
+        ("：", ":"),  # Full-width colon
+        ("，", ","),  # Full-width comma
+        ("【", '"'), ("】", '"'),  # Brackets to quotes for simple fields
+        ("＝", "="),  # Full-width equals
+        ("；", ";"),  # Full-width semicolon
+    ]
+    
+    result = json_str
+    for old, new in replacements:
+        result = result.replace(old, new)
+    
+    return result
+
+
+def extract_json_from_response(response: str) -> dict:
+    """Extract and parse JSON from AI response with robust error handling"""
+    # Clean the response
+    cleaned = response.strip()
+    
+    # Remove markdown code blocks
+    if cleaned.startswith('```json'):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith('```'):
+        cleaned = cleaned[3:]
+    if cleaned.endswith('```'):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+    
+    # Try direct parsing first
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    
+    # Try fixing quotes
+    try:
+        fixed = fix_json_quotes(cleaned)
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+    
+    # Try finding JSON object pattern
+    json_match = re.search(r'\{[\s\S]*\}', cleaned)
+    if json_match:
+        json_str = json_match.group()
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            # Try with fixed quotes
+            try:
+                fixed = fix_json_quotes(json_str)
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                pass
+    
+    raise ValueError(f"无法解析JSON响应")
+
+
+def parse_ai_json_response(json_str: str) -> Tuple[List[CharacterKeyframe], str, str, dict]:
+    """
+    Parse AI JSON response into structured data.
+    
+    Args:
+        json_str: Raw JSON string from AI response
+    
+    Returns:
+        Tuple of (character_keyframes, style, scene, parsed_data)
+    """
+    # Extract and parse JSON
+    try:
+        data = extract_json_from_response(json_str)
+    except ValueError as e:
+        raise ValueError(f"JSON解析失败: {e}\n原始响应: {json_str[:500]}...")
+    
+    # Extract style and scene
+    style = data.get('style', '')
+    scene = data.get('scene', '')
+    
+    # Parse characters
+    characters = []
+    for char_data in data.get('characters', []):
+        character_id = char_data.get('id', 0)
+        
+        # Parse best_frame timestamp (e.g., "0:07" -> 7.0 seconds)
+        best_frame_str = char_data.get('best_frame', '')
+        timestamp = 0.0
+        if best_frame_str:
+            match = re.match(r'(\d+):(\d+)', str(best_frame_str))
+            if match:
+                minutes = int(match.group(1))
+                seconds = int(match.group(2))
+                timestamp = minutes * 60 + seconds
+        
+        character = CharacterKeyframe(
+            id=str(uuid.uuid4()),
+            character_id=character_id,
+            name=char_data.get('name', ''),
+            timestamp=timestamp,
+            prompt=char_data.get('description', ''),
+            character_description=char_data.get('description', ''),
+            facial_features=char_data.get('facial_features', ''),
+            costume=char_data.get('costume', ''),
+            best_frame=best_frame_str,
+            confidence=1.0  # AI生成的数据置信度为1.0
+        )
+        characters.append(character)
+    
+    # Sort characters by character_id
+    characters.sort(key=lambda x: x.character_id)
+    
+    return characters, style, scene, data
+
+
+def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
+    """
+    Analyze video using the AI interface from process_video_prompt.py
+    
+    Args:
+        video_path: Path to the uploaded video file
+        task_id: Current task ID
+    
+    Returns:
+        AnalysisResult with extracted data or error
+    """
+    try:
+        # Import the process_video_prompt module
+        import sys
+        modules_path = Path(__file__).parent.parent / 'modules'
+        if str(modules_path) not in sys.path:
+            sys.path.insert(0, str(modules_path))
+        
+        from process_video_prompt import (
+            convert_txt_to_pdf,
+            upload_pdf,
+            upload_video,
+            generate_prompt_from_video
+        )
+        
+        # Get the json_example.txt path
+        base_dir = Path(__file__).parent.parent
+        json_example_path = base_dir / 'modules' / 'json_example.txt'
+        
+        if not json_example_path.exists():
+            return AnalysisResult(
+                success=False,
+                message="未找到参考JSON文件",
+                error=f"文件不存在: {json_example_path}"
+            )
+        
+        # Convert txt to pdf and upload
+        pdf_file = convert_txt_to_pdf(str(json_example_path))
+        json_file_id = upload_pdf(pdf_file)
+        video_file_id = upload_video(video_path)
+        
+        # Call AI with custom prompt
+        prompt_text = "请反推视频提示词，并以上传文件中的json格式输出。人物指代使用姓名。将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化，提示词整体使用中文，名称和对话使用英文"
+        result = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)
+
+        # Clean up temp PDF
+        if Path(pdf_file).exists():
+            Path(pdf_file).unlink()
+
+        # Save raw result immediately (before parsing) for debugging
+        task_dir = Config.get_task_dir(task_id)
+        raw_result_file = task_dir / 'ai_raw_response.txt'
+        with open(raw_result_file, 'w', encoding='utf-8') as f:
+            f.write(result)
+
+        # Parse the result
+        try:
+            characters, style, scene, parsed_data = parse_ai_json_response(result)
+        except Exception as parse_error:
+            return AnalysisResult(
+                success=False,
+                message="JSON解析失败",
+                error=f"解析错误: {parse_error}\n\n原始响应已保存至: {raw_result_file}",
+                raw_result=result
+            )
+
+        # Parse scene_prompts from AI response
+        scene_prompts = []
+        shots_data = parsed_data.get('shots', [])
+        cumulative_time = 0.0
+        
+        for idx, shot_data in enumerate(shots_data):
+            # Parse duration from time string like "3s" or "0-3s"
+            duration = parse_duration(shot_data.get('time', '0'))
+            
+            # Parse characters in shot
+            characters_in_shot = []
+            for char_data in shot_data.get('characters_in_shot', []):
+                characters_in_shot.append(CharacterInShot(
+                    name=char_data.get('name', ''),
+                    pose=char_data.get('pose', ''),
+                    position=char_data.get('position', '')
+                ))
+            
+            # Build combined prompt from shot data
+            prompt_parts = []
+            if shot_data.get('opening_frame'):
+                prompt_parts.append(f"开场: {shot_data['opening_frame']}")
+            if shot_data.get('continuous_action'):
+                prompt_parts.append(f"动作: {shot_data['continuous_action']}")
+            if shot_data.get('end_state'):
+                prompt_parts.append(f"结尾: {shot_data['end_state']}")
+            
+            scene_prompt = ScenePrompt(
+                id=str(uuid.uuid4()),
+                start_time=cumulative_time,
+                end_time=cumulative_time + duration,
+                continuous_action=shot_data.get('continuous_action', ''),
+                space=shot_data.get('space', ''),
+                time_atmosphere=shot_data.get('time_atmosphere', ''),
+                camera=shot_data.get('camera', ''),
+                characters_in_shot=characters_in_shot,
+                transition=shot_data.get('transition', ''),
+                opening_frame=shot_data.get('opening_frame', ''),
+                end_state=shot_data.get('end_state', ''),
+                # Legacy fields
+                prompt="; ".join(prompt_parts) if prompt_parts else shot_data.get('opening_frame', ''),
+                scene_type=shot_data.get('camera', '')
+            )
+            scene_prompts.append(scene_prompt)
+            cumulative_time += duration
+        
+        # Save parsed result to task directory
+        result_file = task_dir / 'ai_analysis_result.json'
+        with open(result_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'raw_result': result[:1000] + '...' if len(result) > 1000 else result,
+                'parsed': {
+                    'style': style,
+                    'scene': scene,
+                    'characters_count': len(characters),
+                    'shots_count': len(scene_prompts)
+                }
+            }, f, ensure_ascii=False, indent=2)
+        
+        return AnalysisResult(
+            success=True,
+            message=f"分析完成：{len(characters)}个角色，{len(scene_prompts)}个镜头",
+            character_keyframes=characters,
+            scene_prompts=scene_prompts,
+            ai_style=style,
+            ai_scene=scene,
+            raw_result=result
+        )
+        
+    except Exception as e:
+        return AnalysisResult(
+            success=False,
+            message="视频分析失败",
+            error=str(e)
+        )
+
+
 class AIInterface:
-    """AI interface placeholder - implement actual API calls here"""
+    """AI interface for video analysis and generation"""
 
     @staticmethod
     def analyze_video(video_path: str, task_id: str) -> AnalysisResult:
         """
         Analyze video to extract character keyframes and scene prompts.
-
-        This is a placeholder implementation. Replace with actual AI API call.
-
+        
+        This method calls the actual AI interface from process_video_prompt.py.
+        
         Args:
             video_path: Path to the uploaded video file
             task_id: Current task ID for saving extracted frames
-
+        
         Returns:
             AnalysisResult with extracted data or error
         """
-        # TODO: Implement actual AI video analysis
-        # This should call your AI service to:
-        # 1. Extract key frames showing characters
-        # 2. Generate character descriptions from each keyframe
-        # 3. Identify scene/shot boundaries
-        # 4. Generate scene prompts for each shot
-
-        print(f"[AIInterface] Analyzing video: {video_path}")
-
-        # Placeholder: Return empty results for now
-        # In real implementation, this would call:
-        # - Vision model for character detection
-        # - Scene detection for shot segmentation
-        # - LLM for prompt generation
-
-        return AnalysisResult(
-            success=True,
-            message="Video analysis complete (placeholder)",
-            character_keyframes=[],
-            scene_prompts=[]
-        )
+        return analyze_video_with_ai(video_path, task_id)
 
     @staticmethod
     def extract_character_prompts(
@@ -147,8 +406,8 @@ class AIInterface:
                 end_time=end_time,
                 prompt=f"Scene {idx + 1}: Dynamic shot with natural lighting",
                 scene_type="general",
-                camera_movement="static",
-                lighting="natural"
+                camera="static",
+                time_atmosphere="natural"
             )
             scene_prompts.append(prompt)
 
