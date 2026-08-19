@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from modules import Config, TaskManager, TaskStatus, AIInterface
 from modules.data_models import SourceVideo
 from modules.ai_interface import parse_ai_json_response, parse_duration, ScenePrompt, CharacterInShot
+from modules.video_utils import extract_frame_from_timestamp_str
 import uuid
 
 
@@ -294,6 +295,22 @@ def render_video_upload_page():
                     )
                     scene_prompts.append(scene_prompt)
                     cumulative_time += duration
+
+                # Extract best frame images for test data as well
+                video_path = current_task.source_video.path if current_task.source_video else None
+                if video_path:
+                    task_dir = Config.get_task_dir(current_task.task_id)
+                    for char in characters:
+                        if char.best_frame:
+                            char_dir = task_dir / 'characters' / char.name
+                            frame_result = extract_frame_from_timestamp_str(
+                                video_path=video_path,
+                                timestamp_str=char.best_frame,
+                                output_dir=str(char_dir),
+                                filename_prefix=f"best_frame_{char.name}"
+                            )
+                            if frame_result.success:
+                                char.best_frame_image_path = frame_result.image_path
 
                 # Update task
                 current_task.character_keyframes = characters

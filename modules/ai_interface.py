@@ -19,6 +19,7 @@ from .data_models import (
     TaskStatus,
 )
 from .config import Config
+from .video_utils import extract_frame_from_timestamp_str, FrameExtractionResult
 
 
 @dataclass
@@ -44,12 +45,32 @@ class GenerationResult:
 
 
 def parse_duration(duration_str: str) -> float:
-    """Parse duration string like '3s' to float seconds"""
+    """Parse duration string like '3s', '3.5s', '00:04', '4:30' to float seconds"""
     if not duration_str:
         return 0.0
-    match = re.search(r'(\d+(?:\.\d+)?)', str(duration_str))
+    
+    duration_str = str(duration_str).strip()
+    
+    # Handle MM:SS or HH:MM:SS format
+    if ':' in duration_str:
+        parts = duration_str.split(':')
+        try:
+            if len(parts) == 2:
+                # MM:SS format
+                minutes, seconds = parts
+                return int(minutes) * 60 + float(seconds)
+            elif len(parts) == 3:
+                # HH:MM:SS format
+                hours, minutes, seconds = parts
+                return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        except (ValueError, TypeError):
+            pass
+    
+    # Handle plain number or number with 's' suffix
+    match = re.search(r'(\d+(?:\.\d+)?)', duration_str)
     if match:
         return float(match.group(1))
+    
     return 0.0
 
 
@@ -215,7 +236,7 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
         
         # Call AI with custom prompt
         prompt_text = "请反推视频提示词，并以上传文件中的json格式输出。人物指代使用姓名。将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化，提示词整体使用中文，名称和对话使用英文"
-        result = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)
+        raw_response = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)
 
         # Clean up temp PDF
         if Path(pdf_file).exists():
@@ -225,11 +246,11 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
         task_dir = Config.get_task_dir(task_id)
         raw_result_file = task_dir / 'ai_raw_response.txt'
         with open(raw_result_file, 'w', encoding='utf-8') as f:
-            f.write(result)
+            f.write(raw_response)
 
         # Parse the result
         try:
-            characters, style, scene, parsed_data = parse_ai_json_response(result)
+            characters, style, scene, parsed_data = parse_ai_json_response(raw_response)
         except Exception as parse_error:
             return AnalysisResult(
                 success=False,
@@ -284,11 +305,24 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
             scene_prompts.append(scene_prompt)
             cumulative_time += duration
         
+        # Extract best frame images for each character
+        for char in characters:
+            if char.best_frame:
+                char_dir = task_dir / 'characters' / char.name
+                frame_result = extract_frame_from_timestamp_str(
+                    video_path=video_path,
+                    timestamp_str=char.best_frame,
+                    output_dir=str(char_dir),
+                    filename_prefix=f"best_frame_{char.name}"
+                )
+                if frame_result.success:
+                    char.best_frame_image_path = frame_result.image_path
+
         # Save parsed result to task directory
         result_file = task_dir / 'ai_analysis_result.json'
         with open(result_file, 'w', encoding='utf-8') as f:
             json.dump({
-                'raw_result': result[:1000] + '...' if len(result) > 1000 else result,
+                'raw_result': raw_response[:1000] + '...' if len(raw_response) > 1000 else raw_response,
                 'parsed': {
                     'style': style,
                     'scene': scene,
@@ -304,7 +338,7 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
             scene_prompts=scene_prompts,
             ai_style=style,
             ai_scene=scene,
-            raw_result=result
+            raw_result=raw_response
         )
         
     except Exception as e:

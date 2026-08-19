@@ -53,6 +53,9 @@ class CharacterKeyframe:
     facial_features: str = ""  # 面部特征
     costume: str = ""  # 服饰
     best_frame: str = ""  # 最佳展示帧位置
+    best_frame_image_path: str = ""  # 最佳展示帧图片路径
+    three_view_images: List[str] = field(default_factory=list)  # 三视图图片路径列表
+    selected_three_view_index: int = -1  # 选定的三视图索引，-1表示未选择
     confidence: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -77,6 +80,9 @@ class CharacterKeyframe:
             'facial_features': data.get('facial_features', ''),
             'costume': data.get('costume', ''),
             'best_frame': data.get('best_frame', ''),
+            'best_frame_image_path': data.get('best_frame_image_path', ''),
+            'three_view_images': data.get('three_view_images', []),
+            'selected_three_view_index': data.get('selected_three_view_index', -1),
             'confidence': data.get('confidence', 0.0)
         }
         return cls(**safe_data)
@@ -120,9 +126,9 @@ class ScenePrompt:
 
     def to_dict(self) -> Dict[str, Any]:
         result = asdict(self)
-        # Backward compatibility: include legacy field names
-        result['lighting'] = self.time_atmosphere
-        result['camera_movement'] = self.camera
+        # Remove legacy field names - only use new field names
+        result.pop('lighting', None)
+        result.pop('camera_movement', None)
         return result
 
     @classmethod
@@ -137,9 +143,13 @@ class ScenePrompt:
             ]
         # Backward compatibility: map old field names to new ones
         if 'lighting' in data and 'time_atmosphere' not in data:
-            data['time_atmosphere'] = data['lighting']
+            data['time_atmosphere'] = data.pop('lighting')
+        else:
+            data.pop('lighting', None)
         if 'camera_movement' in data and 'camera' not in data:
-            data['camera'] = data['camera_movement']
+            data['camera'] = data.pop('camera_movement')
+        else:
+            data.pop('camera_movement', None)
         return cls(**data)
 
 

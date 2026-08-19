@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules import Config, TaskManager, TaskStatus
+from modules.ai_image import generate_character_three_view, build_three_view_prompt
 
 
 def format_timestamp(seconds: float) -> str:
@@ -125,6 +126,119 @@ def render_character_page():
                             <strong style="color: #22C55E;">✨ 最佳展示帧:</strong> {kf.best_frame}
                         </div>
                         """, unsafe_allow_html=True)
+
+                    # Two-column layout: Best frame | Three view
+                    col_best, col_three = st.columns(2)
+
+                    with col_best:
+                        # Best frame image
+                        st.markdown("**🎬 最佳展示帧**")
+                        if kf.best_frame_image_path and Path(kf.best_frame_image_path).exists():
+                            try:
+                                st.image(
+                                    kf.best_frame_image_path,
+                                    caption=f"{kf.name} 最佳展示帧",
+                                    width=300
+                                )
+                            except Exception as e:
+                                st.error(f"❌ 无法加载最佳帧图片: {str(e)}")
+                        elif kf.best_frame:
+                            st.markdown("""
+                            <div style="background: #374151; color: #F87171; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; text-align: center;">
+                                ⚠️ 最佳帧图片不可用
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.info("暂无最佳展示帧信息")
+
+                    with col_three:
+                        st.markdown("**🎭 三视图**")
+
+                        # Initialize session state for this character's selected index
+                        three_view_key = f"three_view_selected_{kf.id}"
+                        if three_view_key not in st.session_state:
+                            st.session_state[three_view_key] = kf.selected_three_view_index
+
+                        # Generate button
+                        generate_key = f"generate_{kf.id}"
+                        if st.button("🖼️ 生成三视图", key=generate_key, use_container_width=True):
+                            if kf.best_frame_image_path and Path(kf.best_frame_image_path).exists():
+                                # Build prompt
+                                prompt = build_three_view_prompt(
+                                    character_name=kf.name,
+                                    character_description=kf.character_description,
+                                    facial_features=kf.facial_features,
+                                    costume=kf.costume
+                                )
+
+                                # Output directory
+                                task_dir = Config.get_task_dir(current_task.task_id)
+                                output_dir = str(task_dir / 'characters' / kf.name)
+
+                                # Generate three view
+                                with st.spinner("正在生成三视图..."):
+                                    result = generate_character_three_view(
+                                        reference_image_path=kf.best_frame_image_path,
+                                        prompt=prompt,
+                                        output_dir=output_dir,
+                                        character_name=kf.name
+                                    )
+
+                                if result.success:
+                                    # Add to three view images list
+                                    kf.three_view_images.append(result.image_path)
+                                    # Set as selected
+                                    kf.selected_three_view_index = len(kf.three_view_images) - 1
+                                    st.session_state[three_view_key] = kf.selected_three_view_index
+                                    TaskManager.save_task(current_task)
+                                    st.success("✅ 三视图生成成功！")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ 生成失败: {result.error_message}")
+                            else:
+                                st.error("❌ 最佳展示帧图片不可用，无法生成三视图")
+
+                        st.markdown("---")
+
+                        # Display three view images
+                        if kf.three_view_images:
+                            # Show image selector if multiple images
+                            if len(kf.three_view_images) > 1:
+                                st.markdown(f"已生成 {len(kf.three_view_images)} 个三视图，选择一个作为当前版本:")
+
+                                # Create radio options
+                                options = [f"版本 {i+1}" for i in range(len(kf.three_view_images))]
+                                selected = st.radio(
+                                    "选择三视图版本",
+                                    options=options,
+                                    index=st.session_state[three_view_key] if st.session_state[three_view_key] >= 0 else 0,
+                                    key=f"radio_{kf.id}",
+                                    label_visibility="collapsed"
+                                )
+
+                                selected_index = options.index(selected)
+                                if selected_index != st.session_state[three_view_key]:
+                                    kf.selected_three_view_index = selected_index
+                                    st.session_state[three_view_key] = selected_index
+                                    TaskManager.save_task(current_task)
+
+                                display_index = selected_index
+                            else:
+                                display_index = 0
+
+                            # Display the selected three view image
+                            image_path = kf.three_view_images[display_index]
+                            if Path(image_path).exists():
+                                st.image(image_path, caption=f"三视图 - 版本 {display_index + 1}", width=350)
+                            else:
+                                st.error(f"❌ 图片文件不存在: {image_path}")
+                        else:
+                            st.markdown("""
+                            <div style="background: #1E293B; border: 2px dashed #475569; color: #94A3B8; padding: 2rem; border-radius: 8px; margin: 0.5rem 0; text-align: center;">
+                                <p>点击上方「生成三视图」按钮创建角色的三视图</p>
+                                <p style="font-size: 0.875rem; margin-top: 0.5rem;">基于最佳展示帧和角色描述生成</p>
+                            </div>
+                            """, unsafe_allow_html=True)
 
                     # Merged editable content for description, facial features, and costume
                     combined_content = ""
