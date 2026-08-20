@@ -15,10 +15,10 @@ class FrameExtractionResult:
     error_message: str = ""
 
 
-def parse_timestamp(timestamp_str: str, video_duration: float) -> float:
+def parse_timestamp(timestamp_str: str, video_duration: float, fps: float = 30.0) -> float:
     """
     解析时间戳字符串，返回秒数
-    
+
     支持格式:
     - "1:30" -> 90秒
     - "0:07" -> 7秒
@@ -26,25 +26,41 @@ def parse_timestamp(timestamp_str: str, video_duration: float) -> float:
     - "90" -> 90秒
     - "90s" -> 90秒
     - "90.5s" -> 90.5秒
-    
+    - "HH:MM:SS:FF" -> 时:分:秒:帧 (如 "00:00:12:15")
+
     Args:
         timestamp_str: 时间戳字符串
         video_duration: 视频总时长（秒），用于处理超过视频长度的时间
-    
+        fps: 视频帧率（用于解析帧号），默认30.0
+
     Returns:
         时间戳对应的秒数
     """
     if not timestamp_str:
         return 0.0
-    
+
     timestamp_str = str(timestamp_str).strip()
-    
+
     try:
+        # HH:MM:SS:FF 格式（4个部分）
+        if ':' in timestamp_str:
+            parts = timestamp_str.split(':')
+            if len(parts) == 4:
+                try:
+                    hours = int(parts[0])
+                    minutes = int(parts[1])
+                    seconds = int(parts[2])
+                    frames = int(parts[3])
+                    total_seconds = hours * 3600 + minutes * 60 + seconds + frames / fps
+                    return min(total_seconds, video_duration)
+                except ValueError:
+                    pass
+
         # 纯数字格式 (90, 90.5)
         if timestamp_str.replace('.', '').isdigit():
             seconds = float(timestamp_str.replace('s', ''))
             return min(seconds, video_duration)
-        
+
         # MM:SS 或 MM:SS.ss 格式
         if ':' in timestamp_str:
             parts = timestamp_str.split(':')
@@ -52,7 +68,7 @@ def parse_timestamp(timestamp_str: str, video_duration: float) -> float:
                 minutes, seconds = parts
                 total_seconds = int(minutes) * 60 + float(seconds)
                 return min(total_seconds, video_duration)
-        
+
         # 尝试直接转为浮点数
         total_seconds = float(timestamp_str.replace('s', ''))
         return min(total_seconds, video_duration)
@@ -112,24 +128,32 @@ def extract_frame_at_timestamp(
                 )
             
             # 确保时间戳有效
-            timestamp = max(0.0, min(timestamp, duration - 0.01))
-            
-            # 计算目标帧位置
-            target_frame = int(timestamp * fps)
-            
-            # 跳转到目标帧
+            timestamp = max(0.0, min(timestamp, duration - 0.001))
+
+            # 计算目标帧号
+            target_frame = int(round(timestamp * fps))
+            target_frame = max(0, min(target_frame, total_frames - 1))
+
+            # 精确定位到目标帧（CAP_PROP_POS_FRAMES 可能四舍五入，用循环修正）
             cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-            
+            for _ in range(3):  # 最多修正3次
+                current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+                if current_frame == target_frame:
+                    break
+                ret_tmp, _ = cap.read()
+                if not ret_tmp:
+                    break
+
             # 读取帧
             ret, frame = cap.read()
             if not ret or frame is None:
                 return FrameExtractionResult(
                     success=False,
-                    error_message=f"无法读取帧 at {timestamp:.2f}s"
+                    error_message=f"无法读取帧 {target_frame}"
                 )
-            
-            # 生成输出文件路径
-            output_filename = f"{filename_prefix}_{timestamp:.2f}s.jpg"
+
+            # 生成输出文件路径（使用帧号命名）
+            output_filename = f"{filename_prefix}_{target_frame:06d}f.jpg"
             output_path = os.path.join(output_dir, output_filename)
             
             # 保存图片
@@ -194,10 +218,10 @@ def extract_frame_from_timestamp_str(
         duration = total_frames / fps if fps > 0 else 0
     finally:
         cap.release()
-    
-    # 解析时间戳
-    timestamp = parse_timestamp(timestamp_str, duration)
-    
+
+    # 解析时间戳（传入 fps 以正确解析 HH:MM:SS:FF 格式）
+    timestamp = parse_timestamp(timestamp_str, duration, fps=fps)
+
     return extract_frame_at_timestamp(
         video_path=video_path,
         timestamp=timestamp,

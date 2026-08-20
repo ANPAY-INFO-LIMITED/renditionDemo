@@ -174,7 +174,7 @@ def generate_prompt_from_video(video_file_id: str, json_file_id: str, prompt_tex
         prompt_text = "反推视频提示词，并以文档中json格式输出"
 
     response = client.responses.create(
-        model="ep-20260819140216-h6pj7",
+        model="ep-20260820135557-h4kfc",
         input=[
             {"role": "user", "content": [
                 {
@@ -193,6 +193,7 @@ def generate_prompt_from_video(video_file_id: str, json_file_id: str, prompt_tex
         ],
     )
     print(response.usage)
+    print(response)
 
 
     return response.output[0].content[0].text

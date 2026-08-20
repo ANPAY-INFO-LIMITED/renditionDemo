@@ -269,11 +269,14 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
         video_file_id = upload_video(video_path)
         
         # Call AI with custom prompt
-        prompt_text = ("请反推视频提示词，并以上传文件中的json格式输出。\n\n"
-                       "人物指代使用姓名。\n\n"
-                       "将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。\n\n"
-                       "同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化。\n\n"
-                       "严格保证提示词整体使用中文，名称和对话使用英文")
+        prompt_text = ("请反推视频提示词,要求如下:\n\n"
+                       "1.以上传文件中的json格式输出。"
+                       "2.最佳角色展示帧展示对应角色正面形象，取连续展示人物片段的中间帧，采用 (HH:MM:SS:FF)格式，精确到帧."
+                       "3.角色相似度大于0.7（满值为1）应当视为同一角色\n\n"
+                       "4.人物指代使用姓名。\n\n"
+                       "5.将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。\n\n"
+                       "6.同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化。\n\n"
+                       "7.严格保证提示词整体使用中文，仅名称和对话使用英文")
         raw_response = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)
 
         # Clean up temp PDF
@@ -294,7 +297,7 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
                 success=False,
                 message="JSON解析失败",
                 error=f"解析错误: {parse_error}\n\n原始响应已保存至: {raw_result_file}",
-                raw_result=result
+                raw_result=raw_response
             )
 
         # Parse scene_prompts from AI response

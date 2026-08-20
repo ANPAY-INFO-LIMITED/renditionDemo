@@ -7,7 +7,7 @@
             "description": "角色描述",
             "facial_features": "角色面部特征"
             "costume"："角色服饰"，
-            "best_frame": "最佳角色展示帧的位置，尽可能展示对应角色正面上半身形象，采用 (MM:SS)格式，示例:00:04"
+            "best_frame": "最佳角色展示帧。"
         }
     ],
     "scene": "场景名称",

@@ -41,16 +41,14 @@ class ImageGenerationResult:
 
 
 def generate_character_three_view(
-    reference_image_path: str,
     prompt: str,
     output_dir: str,
     character_name: str = "character"
 ) -> ImageGenerationResult:
     """
-    根据参考图和提示词生成角色三视图
+    根据提示词生成角色三视图（不再使用参考图片）
     
     Args:
-        reference_image_path: 参考图片路径（最佳展示帧）
         prompt: 提示词
         output_dir: 输出目录
         character_name: 角色名称，用于生成文件名
@@ -70,22 +68,11 @@ def generate_character_three_view(
             api_key=os.getenv('ARK_API_KEY'),
         )
         
-        # 检查参考图片是否存在
-        if not os.path.exists(reference_image_path):
-            return ImageGenerationResult(
-                success=False,
-                error_message=f"参考图片不存在: {reference_image_path}"
-            )
-        
-        # 转换参考图片为 base64
-        image_base64 = image_to_base64(reference_image_path)
-        
-        # 生成图片
+        # 生成图片（仅使用提示词，不传入参考图）
         images_response = client.images.generate(
-            model="ep-20260819135919-p9rxq",
+            model="ep-20260820164114-mjmhf",
             prompt=prompt,
-            image=image_base64,
-            size="1K",
+            size="2K",
             output_format="png",
             response_format="url",
             watermark=False
@@ -117,13 +104,11 @@ def generate_character_three_view(
 
 
 if __name__ == "__main__":
-    # 测试代码
-    test_image = "D:\\python\\renditionDemo\\tasks\\a06dd52f-9071-4bda-942a-50349ec65e3f\\characters\\Eleanor\\best_frame_Eleanor_3.00s.jpg"
+    # 测试代码（不再需要本地图片）
     test_output = "D:\\python\\renditionDemo\\tasks\\a06dd52f-9071-4bda-942a-50349ec65e3f\\characters\\Eleanor"
     
     result = generate_character_three_view(
-        reference_image_path=test_image,
-        prompt="参考图片中人物形象，生成欧美风格三视图（正面、侧面、背面），保持人物面部特征和服饰",
+        prompt="生成欧美风格三视图（正面、侧面、背面），展现人物面部特征和服饰细节",
         output_dir=test_output,
         character_name="Eleanor"
     )

@@ -153,36 +153,32 @@ def render_character_page():
                         # Generate button
                         generate_key = f"generate_{kf.id}"
                         if st.button("🖼️ 生成三视图", key=generate_key, width='stretch'):
-                            if kf.best_frame_image_path and Path(kf.best_frame_image_path).exists():
-                                # Use prompt directly (already includes three-view generation instructions)
-                                prompt = kf.prompt
+                            # 仅使用提示词生成三视图
+                            prompt = kf.prompt
 
-                                # Output directory
-                                task_dir = Config.get_task_dir(current_task.task_id)
-                                output_dir = str(task_dir / 'characters' / kf.name)
+                            # Output directory
+                            task_dir = Config.get_task_dir(current_task.task_id)
+                            output_dir = str(task_dir / 'characters' / kf.name)
 
-                                # Generate three view
-                                with st.spinner("正在生成三视图..."):
-                                    result = generate_character_three_view(
-                                        reference_image_path=kf.best_frame_image_path,
-                                        prompt=prompt,
-                                        output_dir=output_dir,
-                                        character_name=kf.name
-                                    )
+                            # Generate three view
+                            with st.spinner("正在生成三视图..."):
+                                result = generate_character_three_view(
+                                    prompt=prompt,
+                                    output_dir=output_dir,
+                                    character_name=kf.name
+                                )
 
-                                if result.success:
-                                    # Add to three view images list
-                                    kf.three_view_images.append(result.image_path)
-                                    # Set as selected
-                                    kf.selected_three_view_index = len(kf.three_view_images) - 1
-                                    st.session_state[three_view_key] = kf.selected_three_view_index
-                                    TaskManager.save_task(current_task)
-                                    st.success("✅ 三视图生成成功！")
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ 生成失败: {result.error_message}")
+                            if result.success:
+                                # Add to three view images list
+                                kf.three_view_images.append(result.image_path)
+                                # Set as selected
+                                kf.selected_three_view_index = len(kf.three_view_images) - 1
+                                st.session_state[three_view_key] = kf.selected_three_view_index
+                                TaskManager.save_task(current_task)
+                                st.success("✅ 三视图生成成功！")
+                                st.rerun()
                             else:
-                                st.error("❌ 最佳展示帧图片不可用，无法生成三视图")
+                                st.error(f"❌ 生成失败: {result.error_message}")
 
                         st.markdown("---")
 
