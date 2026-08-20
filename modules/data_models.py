@@ -261,7 +261,41 @@ class Task:
         task.ai_analysis_result = data.get('ai_analysis_result')
         task.ai_style = data.get('ai_style', '')
         task.ai_scene = data.get('ai_scene', '')
-        task.shot_segments = data.get('shot_segments', [])
+
+        # Migrate old shot_segments structure (per-shot list) -> combined_prompt
+        segments = data.get('shot_segments', [])
+        if segments and 'prompts' in segments[0]:
+            migrated = []
+            for seg in segments:
+                shot_dicts = seg.get('prompts', [])
+                scene_objs = [ScenePrompt.from_dict(s) for s in shot_dicts]
+                base_time = scene_objs[0].start_time if scene_objs else 0.0
+                lines = []
+                for p in scene_objs:
+                    rel_start = max(0.0, p.start_time - base_time)
+                    rel_end = max(0.0, p.end_time - base_time)
+                    time_range = f"{int(rel_start // 60):02d}:{int(rel_start % 60):02d}-{int(rel_end // 60):02d}:{int(rel_end % 60):02d}"
+                    parts = [time_range]
+                    if p.camera:
+                        parts.append(f"镜头:{p.camera}")
+                    if p.space:
+                        parts.append(f"空间:{p.space}")
+                    if p.time_atmosphere:
+                        parts.append(f"氛围:{p.time_atmosphere}")
+                    if p.opening_frame:
+                        parts.append(f"开场:{p.opening_frame}")
+                    if p.continuous_action:
+                        parts.append(f"动作:{p.continuous_action}")
+                    if p.end_state:
+                        parts.append(f"结尾:{p.end_state}")
+                    lines.append(" ".join(parts))
+                seg['combined_prompt'] = "\n".join(lines)
+                seg.pop('prompts', None)
+                if 'prompt_count' not in seg:
+                    seg['prompt_count'] = len(scene_objs)
+                migrated.append(seg)
+            segments = migrated
+        task.shot_segments = segments
 
         return task
 

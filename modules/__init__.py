@@ -22,6 +22,10 @@ from .ai_image import (
     generate_character_three_view,
     ImageGenerationResult,
 )
+from .shot_segmenter import (
+    segment_shots_into_groups,
+    auto_segment_task,
+)
 
 __all__ = [
     'Task',
@@ -42,4 +46,6 @@ __all__ = [
     'FrameExtractionResult',
     'generate_character_three_view',
     'ImageGenerationResult',
+    'segment_shots_into_groups',
+    'auto_segment_task',
 ]

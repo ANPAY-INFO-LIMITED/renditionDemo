@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from modules import Config, TaskManager, TaskStatus, AIInterface
+from modules import Config, TaskManager, TaskStatus, AIInterface, auto_segment_task
 from modules.data_models import SourceVideo
 from modules.ai_interface import parse_ai_json_response, parse_duration, ScenePrompt, CharacterInShot
 from modules.video_utils import extract_frame_from_timestamp_str
@@ -225,6 +225,7 @@ def render_video_upload_page():
 
                     progress_bar.progress(100)
                     status_text.success(f"✅ {result.message}")
+                    _auto_segment(current_task, status_text)
                     st.rerun()
                 else:
                     current_task.error_message = result.error
@@ -322,10 +323,30 @@ def render_video_upload_page():
                 TaskManager.save_task(current_task)
 
                 st.success(f"✅ 测试数据加载完成：{len(characters)}个角色，{len(scene_prompts)}个镜头")
+                _auto_segment(current_task, None)
                 st.rerun()
 
             except Exception as e:
-                st.error(f"❌ 测试数据加载失败: {str(e)}")
+                st.error(f"� 测试数据加载失败: {str(e)}")
+
+
+def _auto_segment(task, status_text) -> None:
+    """Run auto shot segmentation and surface the result in the UI."""
+    try:
+        segment_count = auto_segment_task(task)
+        if segment_count > 0:
+            TaskManager.save_task(task)
+            msg = f"🎬 已自动拆分为 {segment_count} 个子视频片段"
+            if status_text is not None:
+                status_text.info(msg)
+            else:
+                st.info(msg)
+    except Exception as e:
+        err = f"⚠️ 自动拆分镜头失败: {e}"
+        if status_text is not None:
+            status_text.warning(err)
+        else:
+            st.warning(err)
 
 # Run page
 if __name__ == "__main__":
