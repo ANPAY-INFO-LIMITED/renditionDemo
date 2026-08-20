@@ -20,7 +20,6 @@ from .video_utils import (
 )
 from .ai_image import (
     generate_character_three_view,
-    build_three_view_prompt,
     ImageGenerationResult,
 )
 
@@ -42,6 +41,5 @@ __all__ = [
     'get_video_info',
     'FrameExtractionResult',
     'generate_character_three_view',
-    'build_three_view_prompt',
     'ImageGenerationResult',
 ]

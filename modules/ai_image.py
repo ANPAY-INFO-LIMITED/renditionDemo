@@ -101,6 +101,8 @@ def generate_character_three_view(
         
         # 下载并保存图片
         download_image(images_response.data[0].url, output_path)
+
+        print(images_response.usage)
         
         return ImageGenerationResult(
             success=True,
@@ -112,44 +114,6 @@ def generate_character_three_view(
             success=False,
             error_message=f"生成三视图失败: {str(e)}"
         )
-
-
-def build_three_view_prompt(character_name: str, character_description: str, 
-                            facial_features: str, costume: str) -> str:
-    """
-    构建三视图生成的提示词
-    
-    Args:
-        character_name: 角色名称
-        character_description: 角色描述
-        facial_features: 面部特征
-        costume: 服饰描述
-    
-    Returns:
-        组合后的提示词
-    """
-    prompt_parts = []
-    
-    if character_description:
-        prompt_parts.append(f"角色: {character_description}")
-    if facial_features:
-        prompt_parts.append(f"面部特征: {facial_features}")
-    if costume:
-        prompt_parts.append(f"服饰: {costume}")
-    
-    base_prompt = "，".join(prompt_parts) if prompt_parts else ""
-    
-    full_prompt = f"""参考图片中的人物形象，生成该角色的欧美风格三视图（正面、侧面、背面）。
-要求：
-1. 保持参考图中人物的面部特征和五官比例
-2. 保持参考图中人物的服饰和造型
-3. 三视图清晰展示人物的正面、侧面（左侧或右侧）、背面姿态
-4. 人物站在纯色背景前，姿态自然
-5. 欧美真人风格，真实感强
-
-{base_prompt}"""
-    
-    return full_prompt
 
 
 if __name__ == "__main__":

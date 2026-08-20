@@ -7,14 +7,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules import Config, TaskManager, TaskStatus
-from modules.ai_image import generate_character_three_view, build_three_view_prompt
-
-
-def format_timestamp(seconds: float) -> str:
-    """Format timestamp to mm:ss.ms"""
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    return f"{minutes:02d}:{secs:05.2f}"
+from modules.ai_image import generate_character_three_view
 
 
 def render_character_page():
@@ -37,7 +30,7 @@ def render_character_page():
     # Header with back button
     col_back, col_title = st.columns([1, 4])
     with col_back:
-        if st.button("🏠 返回", use_container_width=True):
+        if st.button("🏠 返回", width='stretch'):
             st.switch_page("main.py")
     with col_title:
         st.markdown('<h2 class="section-header">👤 步骤 2: 人物分析</h2>', unsafe_allow_html=True)
@@ -109,8 +102,6 @@ def render_character_page():
 
                 # Character info
                 with st.container():
-                    st.markdown("#### 📝 角色详情")
-
                     # Display character name prominently
                     if kf.name:
                         st.markdown(f"""
@@ -161,15 +152,10 @@ def render_character_page():
 
                         # Generate button
                         generate_key = f"generate_{kf.id}"
-                        if st.button("🖼️ 生成三视图", key=generate_key, use_container_width=True):
+                        if st.button("🖼️ 生成三视图", key=generate_key, width='stretch'):
                             if kf.best_frame_image_path and Path(kf.best_frame_image_path).exists():
-                                # Build prompt
-                                prompt = build_three_view_prompt(
-                                    character_name=kf.name,
-                                    character_description=kf.character_description,
-                                    facial_features=kf.facial_features,
-                                    costume=kf.costume
-                                )
+                                # Use prompt directly (already includes three-view generation instructions)
+                                prompt = kf.prompt
 
                                 # Output directory
                                 task_dir = Config.get_task_dir(current_task.task_id)
@@ -202,34 +188,37 @@ def render_character_page():
 
                         # Display three view images
                         if kf.three_view_images:
-                            # Show image selector if multiple images
-                            if len(kf.three_view_images) > 1:
-                                st.markdown(f"已生成 {len(kf.three_view_images)} 个三视图，选择一个作为当前版本:")
-
-                                # Create radio options
-                                options = [f"版本 {i+1}" for i in range(len(kf.three_view_images))]
-                                selected = st.radio(
-                                    "选择三视图版本",
-                                    options=options,
-                                    index=st.session_state[three_view_key] if st.session_state[three_view_key] >= 0 else 0,
-                                    key=f"radio_{kf.id}",
-                                    label_visibility="collapsed"
-                                )
-
-                                selected_index = options.index(selected)
-                                if selected_index != st.session_state[three_view_key]:
-                                    kf.selected_three_view_index = selected_index
-                                    st.session_state[three_view_key] = selected_index
-                                    TaskManager.save_task(current_task)
-
-                                display_index = selected_index
-                            else:
-                                display_index = 0
+                            # Get display index
+                            display_index = st.session_state[three_view_key] if st.session_state[three_view_key] >= 0 else 0
 
                             # Display the selected three view image
                             image_path = kf.three_view_images[display_index]
                             if Path(image_path).exists():
-                                st.image(image_path, caption=f"三视图 - 版本 {display_index + 1}", width=350)
+                                st.image(
+                                    image_path,
+                                    caption=f"三视图 - 版本 {display_index + 1}（点击下方切换版本）",
+                                    width='content'
+                                )
+
+                                # Show expander for version selection if multiple images exist
+                                if len(kf.three_view_images) > 1:
+                                    with st.expander("📋 选择其他版本"):
+                                        cols = st.columns(len(kf.three_view_images))
+                                        for i, img_path in enumerate(kf.three_view_images):
+                                            with cols[i]:
+                                                if i == display_index:
+                                                    st.markdown(f"**✅ 当前版本 {i+1}**")
+                                                else:
+                                                    st.markdown(f"**版本 {i+1}**")
+                                                if Path(img_path).exists():
+                                                    st.image(img_path, caption=f"版本 {i+1}", width=120)
+                                                    if st.button(f"切换", key=f"select_{kf.id}_{i}"):
+                                                        kf.selected_three_view_index = i
+                                                        st.session_state[three_view_key] = i
+                                                        TaskManager.save_task(current_task)
+                                                        st.rerun()
+                                                else:
+                                                    st.error(f"图片不存在")
                             else:
                                 st.error(f"❌ 图片文件不存在: {image_path}")
                         else:
@@ -240,46 +229,24 @@ def render_character_page():
                             </div>
                             """, unsafe_allow_html=True)
 
-                    # Merged editable content for description, facial features, and costume
-                    combined_content = ""
-                    parts = []
-                    if kf.character_description:
-                        parts.append(f"【描述】{kf.character_description}")
-                    if kf.facial_features:
-                        parts.append(f"【面部特征】{kf.facial_features}")
-                    if kf.costume:
-                        parts.append(f"【服饰】{kf.costume}")
-                    combined_content = "\n\n".join(parts)
-
-                    new_combined = st.text_area(
-                        "角色详情（可编辑）",
-                        value=combined_content,
+                    # Direct prompt editing
+                    st.markdown("**📝 人物提示词**")
+                    new_prompt = st.text_area(
+                        "人物提示词",
+                        value=kf.prompt,
                         height=200,
-                        key=f"combined_{kf.id}",
-                        help="合并的角色描述信息，可编辑"
+                        key=f"prompt_{kf.id}",
+                        label_visibility="collapsed",
+                        help="角色提示词，可直接编辑"
                     )
 
-                    # Show timestamp info
-                    if kf.timestamp > 0:
-                        st.caption(f"⏱️ 帧位置: {format_timestamp(kf.timestamp)}")
-
                     # Update on change
-                    if new_combined != combined_content:
-                        # Parse and update individual fields
-                        lines = new_combined.split("\n\n")
-                        for line in lines:
-                            if line.startswith("【描述】"):
-                                kf.character_description = line[4:].strip()
-                            elif line.startswith("【面部特征】"):
-                                kf.facial_features = line[6:].strip()
-                            elif line.startswith("【服饰】"):
-                                kf.costume = line[4:].strip()
-                        # Also update prompt
-                        kf.prompt = kf.character_description
+                    if new_prompt != kf.prompt:
+                        kf.prompt = new_prompt
                         if current_task.status != TaskStatus.PROMPTS_MODIFIED.value:
                             current_task.update_status(TaskStatus.PROMPTS_MODIFIED)
                         TaskManager.save_task(current_task)
-                        st.toast("✅ 角色详情已保存", icon="💾")
+                        st.toast("✅ 人物提示词已保存", icon="💾")
 
                 st.markdown("---")
 

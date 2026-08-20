@@ -22,6 +22,39 @@ from .config import Config
 from .video_utils import extract_frame_from_timestamp_str, FrameExtractionResult
 
 
+def build_character_prompt(description: str, facial_features: str, costume: str) -> str:
+    """
+    Build a unified character prompt for three-view generation.
+    
+    Args:
+        description: Character description
+        facial_features: Facial features
+        costume: Costume/attire
+    
+    Returns:
+        Full prompt for three-view generation
+    """
+    prompt_parts = []
+    if description:
+        prompt_parts.append(f"角色: {description}")
+    if facial_features:
+        prompt_parts.append(f"面部特征: {facial_features}")
+    if costume:
+        prompt_parts.append(f"服饰: {costume}")
+    
+    base_prompt = "，".join(prompt_parts) if prompt_parts else ""
+    
+    return f"""参考图片中的人物形象，生成该角色的欧美风格三视图（正面、侧面、背面）。
+要求：
+1. 保持参考图中人物的面部特征和五官比例
+2. 保持参考图中人物的服饰和造型
+3. 三视图清晰展示人物的正面、侧面（左侧或右侧）、背面姿态
+4. 人物站在纯色背景前，姿态自然
+5. 欧美真人风格，真实感强
+
+{base_prompt}"""
+
+
 @dataclass
 class AnalysisResult:
     """Result from video analysis"""
@@ -178,10 +211,11 @@ def parse_ai_json_response(json_str: str) -> Tuple[List[CharacterKeyframe], str,
             character_id=character_id,
             name=char_data.get('name', ''),
             timestamp=timestamp,
-            prompt=char_data.get('description', ''),
-            character_description=char_data.get('description', ''),
-            facial_features=char_data.get('facial_features', ''),
-            costume=char_data.get('costume', ''),
+            prompt=build_character_prompt(
+                description=char_data.get('description', ''),
+                facial_features=char_data.get('facial_features', ''),
+                costume=char_data.get('costume', '')
+            ),
             best_frame=best_frame_str,
             confidence=1.0  # AI生成的数据置信度为1.0
         )
@@ -235,7 +269,11 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
         video_file_id = upload_video(video_path)
         
         # Call AI with custom prompt
-        prompt_text = "请反推视频提示词，并以上传文件中的json格式输出。人物指代使用姓名。将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化，提示词整体使用中文，名称和对话使用英文"
+        prompt_text = ("请反推视频提示词，并以上传文件中的json格式输出。\n\n"
+                       "人物指代使用姓名。\n\n"
+                       "将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。\n\n"
+                       "同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化。\n\n"
+                       "严格保证提示词整体使用中文，名称和对话使用英文")
         raw_response = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)
 
         # Clean up temp PDF
@@ -393,12 +431,11 @@ class AIInterface:
 
         character_keyframes = []
 
-        for idx, (frame_idx, timestamp, image_path) in enumerate(keyframes):
+        for idx, (frame_idx, timestamp, _) in enumerate(keyframes):
             keyframe = CharacterKeyframe(
                 id=str(uuid.uuid4()),
                 frame_index=frame_idx,
                 timestamp=timestamp,
-                image_path=image_path,
                 prompt=f"Character {idx + 1}: A person with distinctive appearance",
                 character_description=f"Person in frame {frame_idx}",
                 confidence=0.85

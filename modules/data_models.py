@@ -47,11 +47,7 @@ class CharacterKeyframe:
     name: str = ""  # 角色名称
     frame_index: int = 0
     timestamp: float = 0.0
-    image_path: str = ""
-    prompt: str = ""
-    character_description: str = ""
-    facial_features: str = ""  # 面部特征
-    costume: str = ""  # 服饰
+    prompt: str = ""  # 统一的人物提示词（包含姓名、描述、面部特征、服饰等）
     best_frame: str = ""  # 最佳展示帧位置
     best_frame_image_path: str = ""  # 最佳展示帧图片路径
     three_view_images: List[str] = field(default_factory=list)  # 三视图图片路径列表
@@ -67,6 +63,25 @@ class CharacterKeyframe:
             return cls()
         if 'id' not in data:
             data['id'] = str(uuid.uuid4())
+        
+        # For backwards compatibility: merge old fields into prompt
+        # If prompt is empty but old fields exist, build prompt from them
+        prompt = data.get('prompt', '')
+        character_description = data.get('character_description', '')
+        facial_features = data.get('facial_features', '')
+        costume = data.get('costume', '')
+        
+        if not prompt and (character_description or facial_features or costume):
+            # Build prompt from old fields for backwards compatibility
+            parts = []
+            if character_description:
+                parts.append(f"描述: {character_description}")
+            if facial_features:
+                parts.append(f"面部特征: {facial_features}")
+            if costume:
+                parts.append(f"服饰: {costume}")
+            prompt = "\n".join(parts)
+        
         # Ensure all expected fields exist
         safe_data = {
             'id': data.get('id', str(uuid.uuid4())),
@@ -74,11 +89,7 @@ class CharacterKeyframe:
             'name': data.get('name', ''),
             'frame_index': data.get('frame_index', 0),
             'timestamp': data.get('timestamp', 0.0),
-            'image_path': data.get('image_path', ''),
-            'prompt': data.get('prompt', data.get('description', '')),
-            'character_description': data.get('character_description', data.get('description', '')),
-            'facial_features': data.get('facial_features', ''),
-            'costume': data.get('costume', ''),
+            'prompt': prompt,
             'best_frame': data.get('best_frame', ''),
             'best_frame_image_path': data.get('best_frame_image_path', ''),
             'three_view_images': data.get('three_view_images', []),
