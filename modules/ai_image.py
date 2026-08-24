@@ -1,11 +1,8 @@
 """AI图像生成模块"""
 
-import base64
 import os
 import time
 import requests
-from typing import Optional, Tuple
-from pathlib import Path
 from dataclasses import dataclass
 
 try:
@@ -13,13 +10,6 @@ try:
     ARK_AVAILABLE = True
 except ImportError:
     ARK_AVAILABLE = False
-
-
-def image_to_base64(image_path: str) -> str:
-    """Convert local image to Base64 encoding in data URL format."""
-    with open(image_path, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-    return f"data:image/png;base64,{encoded_string}"
 
 
 def download_image(url: str, save_path: str) -> str:

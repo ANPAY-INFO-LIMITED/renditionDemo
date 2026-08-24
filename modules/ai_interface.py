@@ -44,15 +44,14 @@ def build_character_prompt(description: str, facial_features: str, costume: str)
     
     base_prompt = "，".join(prompt_parts) if prompt_parts else ""
     
-    return f"""参考图片中的人物形象，生成该角色的欧美风格三视图（正面、侧面、背面）。
-要求：
-1. 保持参考图中人物的面部特征和五官比例
-2. 保持参考图中人物的服饰和造型
-3. 三视图清晰展示人物的正面、侧面（左侧或右侧）、背面姿态
-4. 人物站在纯色背景前，姿态自然
-5. 欧美真人风格，真实感强
+    return f"""写实风格，电影级画质，自然光影。
+    欧洲裔美国白人，肤色白皙，深邃大眼睛
+    {base_prompt}
+    整体造型符合美式现代豪门短剧中的形象。
+    照片级真实感，高质感皮肤纹理，自然光影。
+    角色设定图，白色背景。左侧为面部半身特写大图，右侧为全身三视图（正面、侧面、背面），保持角色外貌服装在所有视角完全一致。character reference sheet layout, white background.只参考模板图的排版布局（左侧面部特写大图 + 右侧全身三视图），绝不要参考模板图的长相、画风、配色、笔触 and 材质。照片级真实感，高质感皮肤纹理，自然光影。，角色设定图，纯白背景。左侧1/3区域为高细节度面部与上半身特写，清楚展示脸型、五官、发型、眼神、妆容和关键配饰；右侧2/3区域为同一角色的全身三视图，包括正面、侧面、背面。所有视角中的脸型、发型、肤色、体型、服装、配饰、材质和颜色必须完全一致。
+    photorealistic cinematic character reference sheet, full body turnaround, front view, side view, back view, white background, consistent identity across all views, realistic skin texture, no text, no watermark.，负面要求：非动漫，非CG，非插画，无文字水印，无品牌logo，无多余人物，无多余肢体，手指正确，脚部完整，脸部一致，三视图服装一致，身体比例真实，避免塑料皮肤，避免过度磨皮。"""
 
-{base_prompt}"""
 
 
 @dataclass
@@ -271,10 +270,10 @@ def analyze_video_with_ai(video_path: str, task_id: str) -> AnalysisResult:
         # Call AI with custom prompt
         prompt_text = ("请反推视频提示词,要求如下:\n\n"
                        "1.以上传文件中的json格式输出。"
-                       "2.最佳角色展示帧展示对应角色正面形象，取连续展示人物片段的中间帧，采用 (HH:MM:SS:FF)格式，精确到帧."
+                       "2.最佳角色展示帧best_frame展示对应角色正面形象，取连续展示人物片段的中间帧，采用 (HH:MM:SS:FF)格式，精确到帧."
                        "3.角色相似度大于0.7（满值为1）应当视为同一角色\n\n"
                        "4.人物指代使用姓名。\n\n"
-                       "5.将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致。\n\n"
+                       "5.将一个连续的画面及对话归为一个镜头，切保证镜头时长总和与原视频一致,镜头时间长度单位为秒(s)，取1位小数。\n\n"
                        "6.同时将提示词内容改写为欧美真人剧风格，整体剧情结构不变，人物特征，名称，服装，场景本土化。\n\n"
                        "7.严格保证提示词整体使用中文，仅名称和对话使用英文")
         raw_response = generate_prompt_from_video(video_file_id, json_file_id, prompt_text)

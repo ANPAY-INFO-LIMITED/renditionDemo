@@ -138,7 +138,9 @@ def auto_segment_task(task, max_duration: float = 15.0) -> int:
             'end_time': seg['end_time'],
             'prompt_count': seg['prompt_count'],
             'character_context': character_context,
-            'combined_prompt': seg['combined_prompt']
+            'combined_prompt': seg['combined_prompt'],
+            'generated_videos': [],  # 存储生成的视频列表
+            'selected_video_index': -1  # 当前选定的视频索引，-1表示未选择
         }
         for seg in segments
     ]

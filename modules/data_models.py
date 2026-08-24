@@ -295,6 +295,14 @@ class Task:
                     seg['prompt_count'] = len(scene_objs)
                 migrated.append(seg)
             segments = migrated
+        
+        # Ensure all segments have required fields for video generation
+        for seg in segments:
+            if 'generated_videos' not in seg:
+                seg['generated_videos'] = []
+            if 'selected_video_index' not in seg:
+                seg['selected_video_index'] = -1
+        
         task.shot_segments = segments
 
         return task

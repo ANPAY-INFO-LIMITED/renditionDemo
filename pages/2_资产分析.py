@@ -28,12 +28,10 @@ def render_character_page():
         return
 
     # Header with back button
-    col_back, col_title = st.columns([1, 4])
+    col_back, _ = st.columns([1, 4])
     with col_back:
         if st.button("🏠 返回", width='stretch'):
             st.switch_page("main.py")
-    with col_title:
-        st.markdown('<h2 class="section-header">👤 步骤 2: 人物分析</h2>', unsafe_allow_html=True)
 
     # Info cards
     col1, col2, col3 = st.columns(3)

@@ -26,6 +26,10 @@ from .shot_segmenter import (
     segment_shots_into_groups,
     auto_segment_task,
 )
+from .video_concat import (
+    concat_videos,
+    VideoConcatResult,
+)
 
 __all__ = [
     'Task',
@@ -48,4 +52,6 @@ __all__ = [
     'ImageGenerationResult',
     'segment_shots_into_groups',
     'auto_segment_task',
+    'concat_videos',
+    'VideoConcatResult',
 ]
