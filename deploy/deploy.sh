@@ -121,11 +121,20 @@ setup_venv() {
     ${PYTHON_CMD} -m venv ${VENV_DIR}
     source ${VENV_DIR}/bin/activate
 
-    # 升级 pip
+    # 升级 pip（支持 PEP 440 的版本范围语法）
     pip install --upgrade pip
 
-    # 安装依赖
-    pip install -r ${APP_DIR}/requirements.txt
+    # 配置 pip 使用国内镜像源（默认清华源，可加快下载速度）
+    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+    pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+
+    # 安装依赖（如果清华源失败，回退到 PyPI 官方源）
+    if ! pip install -r ${APP_DIR}/requirements.txt; then
+        log_warn "清华源安装失败，切换到 PyPI 官方源重试..."
+        pip config unset global.index-url
+        pip config unset global.trusted-host
+        pip install -r ${APP_DIR}/requirements.txt
+    fi
 
     # 安装额外的系统依赖（OpenCV 需要）
     pip install opencv-python-headless
