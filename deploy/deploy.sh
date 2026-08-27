@@ -7,7 +7,7 @@ set -e
 
 # 配置变量（根据实际情况修改）
 DOMAIN="rendition.a2a.ren"                    # 你的域名
-APP_DIR="/root/renditiondemo"           # 应用安装目录
+APP_DIR="/root/renditionDemo"           # 应用安装目录
 GIT_REPO=""                                # Git 仓库地址（留空则使用本地代码）
 TASKS_DIR="${APP_DIR}/tasks"               # 任务数据目录
 VENV_DIR="${APP_DIR}/venv"                 # Python 虚拟环境
