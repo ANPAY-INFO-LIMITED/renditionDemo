@@ -133,14 +133,8 @@ setup_systemd() {
     cp ${APP_DIR}/deploy/renditiondemo.service /etc/systemd/system/
 
     systemctl daemon-reload
-    systemctl enable renditiondemo
-    systemctl start renditiondemo
 
-    # 检查服务状态
-    sleep 3
-    systemctl status renditiondemo --no-pager
-
-    log_info "Systemd 服务配置完成"
+    log_info "Systemd 服务配置完成（未启动，未设置自启）"
 }
 
 # 主函数
@@ -160,24 +154,30 @@ main() {
     # 提示 SSL 配置
     echo ""
     log_info "=========================================="
-    log_info "部署完成！"
+    log_info "部署完成（服务未启动，未设置自启）！"
     log_info "=========================================="
     echo ""
     echo "1. 编辑 Nginx 配置，填入你的 SSL 证书路径："
     echo "   sudo nano /etc/nginx/sites-available/renditiondemo"
     echo "   修改 ssl_certificate 和 ssl_certificate_key"
     echo ""
-    echo "2. 重载 Nginx："
+    echo "2. 编辑环境变量："
+    echo "   sudo nano /var/www/renditiondemo/.env"
+    echo ""
+    echo "3. 重载 Nginx："
     echo "   sudo nginx -t && sudo systemctl reload nginx"
     echo ""
-    echo "3. 查看服务状态："
+    echo "4. （可选）设置开机自启："
+    echo "   sudo systemctl enable renditiondemo"
+    echo ""
+    echo "5. 启动应用服务："
+    echo "   sudo systemctl start renditiondemo"
+    echo ""
+    echo "6. 查看服务状态："
     echo "   systemctl status renditiondemo"
     echo ""
-    echo "4. 查看日志："
+    echo "7. 查看日志："
     echo "   journalctl -u renditiondemo -f"
-    echo ""
-    echo "5. 重启服务："
-    echo "   systemctl restart renditiondemo"
     echo ""
 }
 
