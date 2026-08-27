@@ -33,15 +33,26 @@ def convert_txt_to_pdf(txt_path: str, pdf_path: str = None) -> str:
     with open(txt_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # 注册中文字体
-    font_paths = [
+    # 注册中文字体（兼容 Windows / Linux / macOS）
+    font_candidates = [
+        # Windows 字体
         ("SimHei", "C:/Windows/Fonts/simhei.ttf"),
         ("Microsoft YaHei", "C:/Windows/Fonts/msyh.ttc"),
         ("SimSun", "C:/Windows/Fonts/simsun.ttc"),
+        # Linux 字体（按常见发行版优先级）
+        ("Noto Sans CJK SC", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        ("Noto Sans CJK SC", "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        ("WenQuanYi Zen Hei", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+        ("WenQuanYi Micro Hei", "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+        ("AR PL UMing CN", "/usr/share/fonts/truetype/arphic/uming.ttc"),
+        ("Source Han Sans CN", "/usr/share/fonts/opentype/noto/SourceHanSansCN-Regular.otf"),
+        # macOS 字体
+        ("PingFang SC", "/System/Library/Fonts/PingFang.ttc"),
+        ("Heiti SC", "/System/Library/Fonts/STHeiti Medium.ttc"),
     ]
 
     font_name = None
-    for name, path in font_paths:
+    for name, path in font_candidates:
         if os.path.exists(path):
             try:
                 pdfmetrics.registerFont(TTFont(name, path))
@@ -51,7 +62,10 @@ def convert_txt_to_pdf(txt_path: str, pdf_path: str = None) -> str:
                 continue
 
     if font_name is None:
-        raise FileNotFoundError("未找到中文字体，请检查系统字体目录")
+        raise FileNotFoundError(
+            "未找到中文字体，请检查系统字体目录。"
+            "Linux 可安装字体包：sudo apt install -y fonts-noto-cjk fonts-wqy-zenhei"
+        )
 
     # 创建PDF
     c = canvas.Canvas(pdf_path, pagesize=A4)

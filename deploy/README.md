@@ -45,7 +45,9 @@ sudo apt install -y \
     libxext6 \
     libxrender1 \
     libgomp1 \
-    ffmpeg
+    ffmpeg \
+    fonts-noto-cjk \
+    fonts-wqy-zenhei
 ```
 
 #### 2. 创建应用目录

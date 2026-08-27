@@ -64,7 +64,9 @@ install_system_deps() {
         libxext6 \
         libxrender1 \
         libgomp1 \
-        ffmpeg
+        ffmpeg \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei
     log_info "系统依赖安装完成"
 }
 
@@ -135,9 +137,6 @@ setup_venv() {
         pip config unset global.trusted-host
         pip install -r ${APP_DIR}/requirements.txt
     fi
-
-    # 安装额外的系统依赖（OpenCV 需要）
-    pip install opencv-python-headless
 
     log_info "虚拟环境创建完成"
 }
