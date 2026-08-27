@@ -10,6 +10,81 @@ from modules import Config, TaskManager, TaskStatus
 from modules.ai_image import generate_character_three_view
 
 
+def render_modal_overlay():
+    """渲染模态遮罩层，阻塞所有用户交互"""
+    st.markdown("""
+    <style>
+    /* 模态遮罩层样式 */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 9998;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        pointer-events: all !important;
+    }
+
+    /* 模态内容框 */
+    .modal-content {
+        background: linear-gradient(135deg, #1E293B, #334155);
+        border: 2px solid #6366F1;
+        border-radius: 16px;
+        padding: 2.5rem 3rem;
+        text-align: center;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        pointer-events: none !important;
+        max-width: 400px;
+    }
+
+    /* 加载动画 */
+    .loading-spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid rgba(99, 102, 241, 0.3);
+        border-top-color: #6366F1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1.5rem;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .modal-title {
+        color: #F8FAFC;
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .modal-subtitle {
+        color: #94A3B8;
+        font-size: 0.9rem;
+    }
+
+    /* 禁用主内容和侧边栏的所有可点击元素 */
+    section[data-testid="stMainBlockContainer"],
+    section[data-testid="stSidebar"] {
+        pointer-events: none !important;
+    }
+    </style>
+
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="loading-spinner"></div>
+            <div class="modal-title">🎭 正在生成三视图</div>
+            <div class="modal-subtitle">请稍候，不要关闭页面...</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def render_character_page():
     """Render the character analysis page"""
 
@@ -26,6 +101,49 @@ def render_character_page():
         if st.button("📹 前往上传"):
             st.switch_page("pages/1_📹_视频上传.py")
         return
+
+    # ========== 处理三视图生成请求 ==========
+    # 检查是否有待处理的生成请求
+    generating_from_params = st.query_params.get("generating_character", None)
+    
+    if generating_from_params:
+        # 找到对应的角色
+        target_kf = None
+        for kf in current_task.character_keyframes:
+            if str(kf.id) == str(generating_from_params):
+                target_kf = kf
+                break
+        
+        if target_kf:
+            # 显示模态遮罩
+            render_modal_overlay()
+            
+            # 执行实际的三视图生成
+            prompt = target_kf.prompt
+            task_dir = Config.get_task_dir(current_task.task_id)
+            output_dir = str(task_dir / 'characters' / target_kf.name)
+            
+            result = generate_character_three_view(
+                prompt=prompt,
+                output_dir=output_dir,
+                character_name=target_kf.name
+            )
+            
+            if result.success:
+                target_kf.three_view_images.append(result.image_path)
+                target_kf.selected_three_view_index = len(target_kf.three_view_images) - 1
+                TaskManager.save_task(current_task)
+                st.success("✅ 三视图生成成功！")
+            else:
+                st.error(f"❌ 生成失败: {result.error_message}")
+            
+            # 清除生成状态
+            st.session_state[f"generating_{target_kf.id}"] = False
+            del st.query_params["generating_character"]
+            st.rerun()
+            return
+    
+    # ========== 正常页面渲染 ==========
 
     # Header with back button
     col_back, _ = st.columns([1, 4])
@@ -150,33 +268,19 @@ def render_character_page():
 
                         # Generate button
                         generate_key = f"generate_{kf.id}"
-                        if st.button("🖼️ 生成三视图", key=generate_key, width='stretch'):
-                            # 仅使用提示词生成三视图
-                            prompt = kf.prompt
-
-                            # Output directory
-                            task_dir = Config.get_task_dir(current_task.task_id)
-                            output_dir = str(task_dir / 'characters' / kf.name)
-
-                            # Generate three view
-                            with st.spinner("正在生成三视图..."):
-                                result = generate_character_three_view(
-                                    prompt=prompt,
-                                    output_dir=output_dir,
-                                    character_name=kf.name
-                                )
-
-                            if result.success:
-                                # Add to three view images list
-                                kf.three_view_images.append(result.image_path)
-                                # Set as selected
-                                kf.selected_three_view_index = len(kf.three_view_images) - 1
-                                st.session_state[three_view_key] = kf.selected_three_view_index
-                                TaskManager.save_task(current_task)
-                                st.success("✅ 三视图生成成功！")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ 生成失败: {result.error_message}")
+                        
+                        # 初始化状态
+                        if f"generating_{kf.id}" not in st.session_state:
+                            st.session_state[f"generating_{kf.id}"] = False
+                        
+                        # 检查是否正在生成此角色
+                        is_generating_this = st.session_state.get(f"generating_{kf.id}", False)
+                        
+                        if st.button("🖼️ 生成三视图", key=generate_key, width='stretch', disabled=is_generating_this):
+                            # 设置生成状态并通过 query_params 触发
+                            st.session_state[f"generating_{kf.id}"] = True
+                            st.query_params["generating_character"] = kf.id
+                            st.rerun()
 
                         st.markdown("---")
 

@@ -15,6 +15,81 @@ from modules.data_models import ScenePrompt, CharacterKeyframe
 from modules.ai_createvido import generate_video_with_three_views, VideoGenerationResult
 
 
+def render_modal_overlay(title: str = "正在处理", subtitle: str = "请稍候，不要关闭页面..."):
+    """渲染模态遮罩层，阻塞所有用户交互"""
+    st.markdown(f"""
+    <style>
+    /* 模态遮罩层样式 */
+    .modal-overlay {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 9998;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        pointer-events: all !important;
+    }}
+
+    /* 模态内容框 */
+    .modal-content {{
+        background: linear-gradient(135deg, #1E293B, #334155);
+        border: 2px solid #6366F1;
+        border-radius: 16px;
+        padding: 2.5rem 3rem;
+        text-align: center;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        pointer-events: none !important;
+        max-width: 400px;
+    }}
+
+    /* 加载动画 */
+    .loading-spinner {{
+        width: 60px;
+        height: 60px;
+        border: 4px solid rgba(99, 102, 241, 0.3);
+        border-top-color: #6366F1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1.5rem;
+    }}
+
+    @keyframes spin {{
+        to {{ transform: rotate(360deg); }}
+    }}
+
+    .modal-title {{
+        color: #F8FAFC;
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }}
+
+    .modal-subtitle {{
+        color: #94A3B8;
+        font-size: 0.9rem;
+    }}
+
+    /* 禁用主内容和侧边栏的所有可点击元素 */
+    section[data-testid="stMainBlockContainer"],
+    section[data-testid="stSidebar"] {{
+        pointer-events: none !important;
+    }}
+    </style>
+
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="loading-spinner"></div>
+            <div class="modal-title">{title}</div>
+            <div class="modal-subtitle">{subtitle}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def format_timestamp(seconds: float) -> str:
     """Format timestamp to mm:ss"""
     minutes = int(seconds // 60)
@@ -147,6 +222,64 @@ def render_shot_segmentation_page():
         if st.button("📊 前往分析"):
             st.switch_page("pages/1_📹_视频上传.py")
         return
+
+    # ========== 处理视频生成请求 ==========
+    generating_from_params = st.query_params.get("generating_video", None)
+    
+    if generating_from_params:
+        # 找到对应的片段
+        target_seg = None
+        for seg in current_task.shot_segments:
+            if str(seg.get('id', '')) == str(generating_from_params):
+                target_seg = seg
+                break
+        
+        if target_seg:
+            # 显示模态遮罩
+            render_modal_overlay(title="🎬 正在生成视频", subtitle="请稍候，不要关闭页面...")
+            
+            # 获取该片段包含的角色
+            characters_in_seg = get_segment_characters(target_seg, current_task)
+            
+            # 获取任务目录
+            task_dir = str(Config.get_task_dir(current_task.task_id))
+            
+            # 生成视频
+            result = generate_segment_video(target_seg, current_task, task_dir)
+            
+            if result.success:
+                # 保存视频信息
+                video_info = {
+                    'task_id': result.task_id,
+                    'video_url': result.video_url,
+                    'video_path': result.video_path,
+                    'generated_at': datetime.now().isoformat(),
+                    'character_count': len(characters_in_seg)
+                }
+                
+                # 添加到视频列表
+                if 'generated_videos' not in target_seg:
+                    target_seg['generated_videos'] = []
+                target_seg['generated_videos'].append(video_info)
+                
+                # 自动选中新生成的视频
+                target_seg['selected_video_index'] = len(target_seg['generated_videos']) - 1
+                
+                # 保存任务
+                current_task.updated_at = datetime.now().isoformat()
+                TaskManager.save_task(current_task)
+                st.success(f"✅ 视频生成成功! Task ID: {result.task_id}")
+            else:
+                st.error(f"❌ {result.error_message}")
+            
+            # 清除生成状态
+            st.session_state[f"generating_video_{target_seg.get('id', '')}"] = False
+            if st.query_params.get("generating_video") == target_seg.get('id', ''):
+                del st.query_params["generating_video"]
+            st.rerun()
+            return
+
+    # ========== 正常页面渲染 ==========
 
     # Header with back button
     col_back, _ = st.columns([1, 4])
@@ -295,54 +428,20 @@ def render_shot_segmentation_page():
                 # 视频生成按钮
                 col_gen1, col_gen2 = st.columns([1, 3])
                 with col_gen1:
-                    if st.button("🎬 生成视频", key=f"generate_btn_{seg['id']}"):
+                    # 初始化生成状态
+                    seg_id = seg.get('id', f"seg_{i}")
+                    generating_key = f"generating_video_{seg_id}"
+                    if generating_key not in st.session_state:
+                        st.session_state[generating_key] = False
+                    
+                    is_generating = st.session_state.get(generating_key, False)
+                    
+                    if st.button("🎬 生成视频", key=f"generate_btn_{seg['id']}", disabled=is_generating):
                         if characters_in_seg:
-                            with st.spinner("正在生成视频，请稍候..."):
-                                # 创建进度条
-                                progress_bar = st.progress(0)
-                                status_text = st.empty()
-                                
-                                status_text.text("正在调用AI生成视频...")
-                                progress_bar.progress(20)
-
-                                # 获取任务目录
-                                task_dir = str(Config.get_task_dir(current_task.task_id))
-
-                                # 生成视频
-                                result = generate_segment_video(seg, current_task, task_dir)
-
-                                progress_bar.progress(80)
-
-                                if result.success:
-                                    # 保存视频信息
-                                    video_info = {
-                                        'task_id': result.task_id,
-                                        'video_url': result.video_url,
-                                        'video_path': result.video_path,  # 本地保存路径
-                                        'generated_at': datetime.now().isoformat(),
-                                        'character_count': len(characters_in_seg)
-                                    }
-                                    
-                                    # 添加到视频列表
-                                    if 'generated_videos' not in seg:
-                                        seg['generated_videos'] = []
-                                    seg['generated_videos'].append(video_info)
-                                    
-                                    # 自动选中新生成的视频
-                                    seg['selected_video_index'] = len(seg['generated_videos']) - 1
-                                    
-                                    # 保存任务
-                                    current_task.updated_at = datetime.now().isoformat()
-                                    TaskManager.save_task(current_task)
-                                    
-                                    progress_bar.progress(100)
-                                    status_text.text("视频生成成功!")
-                                    st.success(f"✅ 视频生成成功! Task ID: {result.task_id}")
-                                    st.rerun()
-                                else:
-                                    progress_bar.progress(100)
-                                    status_text.text("视频生成失败")
-                                    st.error(f"❌ {result.error_message}")
+                            # 设置生成状态并触发
+                            st.session_state[generating_key] = True
+                            st.query_params["generating_video"] = seg.get('id', '')
+                            st.rerun()
                         else:
                             st.warning("该片段没有包含角色的三视图，无法生成视频")
                 
