@@ -4,7 +4,7 @@
 
 - Ubuntu 20.04+ (本文档基于 Ubuntu 22.04)
 - Nginx
-- Python 3.11
+- Python 3.8+ (推荐 3.10+)
 - Git
 - FFmpeg
 
@@ -39,11 +39,11 @@ sudo apt install -y \
     python3-pip \
     git \
     nginx \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
     ffmpeg
 ```

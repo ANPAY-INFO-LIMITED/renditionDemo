@@ -6,8 +6,8 @@
 set -e
 
 # 配置变量（根据实际情况修改）
-DOMAIN="your-domain.com"                    # 你的域名
-APP_DIR="/var/www/renditiondemo"           # 应用安装目录
+DOMAIN="rendition.a2a.ren"                    # 你的域名
+APP_DIR="/root/renditiondemo"           # 应用安装目录
 GIT_REPO=""                                # Git 仓库地址（留空则使用本地代码）
 TASKS_DIR="${APP_DIR}/tasks"               # 任务数据目录
 VENV_DIR="${APP_DIR}/venv"                 # Python 虚拟环境
@@ -32,18 +32,37 @@ check_root() {
 # 安装系统依赖
 install_system_deps() {
     log_info "安装系统依赖..."
+
+    # 检查 Python 版本，优先使用 3.11，否则使用系统默认
+    PYTHON_VERSION=""
+    if command -v python3.11 &> /dev/null; then
+        PYTHON_VERSION="3.11"
+    elif command -v python3.12 &> /dev/null; then
+        PYTHON_VERSION="3.12"
+    elif command -v python3.10 &> /dev/null; then
+        PYTHON_VERSION="3.10"
+    fi
+
+    # 如果没有 Python 3.x 版本，添加 deadsnakes PPA 安装 3.11
+    if [ -z "$PYTHON_VERSION" ]; then
+        log_info "未检测到 Python 3.11，添加 deadsnakes PPA..."
+        apt update
+        apt install -y software-properties-common
+        add-apt-repository -y ppa:deadsnakes/ppa
+    fi
+
     apt update
     apt install -y \
-        python3.11 \
-        python3.11-venv \
+        python3 \
+        python3-venv \
         python3-pip \
         git \
         nginx \
-        libgl1-mesa-glx \
+        libgl1 \
         libglib2.0-0 \
         libsm6 \
         libxext6 \
-        libxrender-dev \
+        libxrender1 \
         libgomp1 \
         ffmpeg
     log_info "系统依赖安装完成"
@@ -85,12 +104,21 @@ deploy_code() {
 setup_venv() {
     log_info "创建 Python 虚拟环境..."
 
+    # 检测可用 Python 版本
+    PYTHON_CMD="python3"
+    if command -v python3.11 &> /dev/null; then
+        PYTHON_CMD="python3.11"
+    elif command -v python3.12 &> /dev/null; then
+        PYTHON_CMD="python3.12"
+    fi
+    log_info "使用 Python: ${PYTHON_CMD}"
+
     if [ -d "${VENV_DIR}" ]; then
         log_warn "虚拟环境已存在，将重新创建"
         rm -rf ${VENV_DIR}
     fi
 
-    python3.11 -m venv ${VENV_DIR}
+    ${PYTHON_CMD} -m venv ${VENV_DIR}
     source ${VENV_DIR}/bin/activate
 
     # 升级 pip
