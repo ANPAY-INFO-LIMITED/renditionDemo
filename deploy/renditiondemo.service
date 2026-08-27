@@ -9,6 +9,7 @@ Group=www-data
 WorkingDirectory=/var/www/renditiondemo
 Environment="PATH=/var/www/renditiondemo/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
+Environment="STREAMLIT_TELEMETRY_ENABLED=0"
 ExecStart=/var/www/renditiondemo/venv/bin/python -m streamlit run /var/www/renditiondemo/main.py --server.port=8501 --server.address=127.0.0.1 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=true
 Restart=always
 RestartSec=10
